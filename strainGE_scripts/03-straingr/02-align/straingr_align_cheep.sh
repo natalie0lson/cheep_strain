@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH --job-name="straingr_align"
+#SBATCH --nodes=1
+#SBATCH --account=nmolson
+#SBATCH --tasks-per-node=1  # The same as the number of cores
+#SBATCH --cpus-per-task=2  # Ensure this matches the `-t` value in bwa mem
+#SBATCH --partition=week-long-cpu
+#SBATCH --time=72:00:00
+#SBATCH --output=straingr_align-%j.o
+#SBATCH --error=straingr_align-%j.e
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=natalie.olson@emory.edu
+
+# Load the conda environment
+source /projects/mnadimlab/conda/bin/activate
+conda init bash
+source ~/.bashrc  # Ensure the changes made by `conda init` take effect
+conda activate /projects/mnadimlab/nmolson/condaenvs/bwa-mem2
+
+# Define the directory containing the sample files and the reference genome
+SAMPLES_DIR="/projects/mnadimlab/mnadim/cheep/data/output/filter"
+OUTPUT_DIR="/projects/mnadimlab/nmolson/data/straingr/cheep"
+REFERENCE="/projects/mnadimlab/nmolson/data/straingr/refs_concat.fasta"
+# Loop through all unique sample prefixes in the directory
+for sample in $(ls $SAMPLES_DIR/*.R1.fq.gz | sed 's/.R1.fq.gz//' | xargs -n 1 basename); do
+    # Define the input and output files
+    READ1="$SAMPLES_DIR/${sample}.R1.fq.gz"
+    READ2="$SAMPLES_DIR/${sample}.R2.fq.gz"
+    BAM_OUT="$OUTPUT_DIR/${sample}.bam"
+
+    # Skip the sample if the BAM output file already exists
+    if [ -f "$BAM_OUT" ]; then
+        echo "Skipping $sample as $BAM_OUT already exists."
+        continue
+    fi
+
+    # Run bwa mem and samtools sort
+    bwa mem -I 300 -t 2 $REFERENCE $READ1 $READ2 | samtools sort -@ 2 -O BAM -o $BAM_OUT -
+
+    # Create BAM index
+    samtools index $BAM_OUT
+done
+
+# Deactivate the conda environment
+conda deactivate
